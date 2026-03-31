@@ -1,10 +1,8 @@
 -- ✅ XENO HUB - FULLY FIXED & UPDATED FOR XENO EXECUTOR
 -- Changes from your request:
--- • Fly now uses LinearVelocity + Attachment (completely different method, no CFrame)
--- • Added Invisibility toggle (proper client-side, turns off cleanly)
--- • All features now fully turn OFF when toggled (clean cleanup)
--- • Added Freeze Players: "Freeze All" toggle + individual player selection list
--- • UI is clean, taller to fit everything, still fully draggable
+-- • Noclip now properly turns ON/OFF (restores collision when toggled off)
+-- • Instant Interact is stronger (HoldDuration + MaxActivationDistance + RequiresLineOfSight = false)
+-- • GUI now opens/closes with RIGHT CTRL (instead of Insert)
 
 print("🔧 XENO HUB - Loading...")
 
@@ -37,7 +35,7 @@ end
 updateCharacter()
 player.CharacterAdded:Connect(updateCharacter)
 
--- ==================== FLY (LinearVelocity method - no CFrame) ====================
+-- ==================== FLY (LinearVelocity - no CFrame) ====================
 local linearVel, attach
 local function startFly()
 	if linearVel then return end
@@ -75,19 +73,36 @@ local function stopFly()
 	if rootPart then rootPart.AssemblyLinearVelocity = Vector3.new() end
 end
 
--- ==================== NOCLIP ====================
+-- ==================== NOCLIP (now properly resets when off) ====================
 local noclipConn
 local function startNoclip()
 	if noclipConn then return end
 	noclipConn = RunService.Stepped:Connect(function()
 		if not toggles.Noclip or not character then return end
 		for _, part in pairs(character:GetDescendants()) do
-			if part:IsA("BasePart") then part.CanCollide = false end
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
 		end
 	end)
 end
+
+local function resetCollisions()
+	if character then
+		for _, part in pairs(character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = true
+			end
+		end
+	end
+end
+
 local function stopNoclip()
-	if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+	if noclipConn then 
+		noclipConn:Disconnect() 
+		noclipConn = nil 
+	end
+	resetCollisions()
 end
 
 -- ==================== INVISIBILITY ====================
@@ -112,17 +127,21 @@ local function stopInvisibility()
 	originalTransparency = {}
 end
 
--- ==================== INSTANT INTERACT ====================
+-- ==================== INSTANT INTERACT (FIXED - stronger settings) ====================
 local function applyInstantInteract()
 	for _, obj in pairs(workspace:GetDescendants()) do
 		if obj:IsA("ProximityPrompt") then
 			obj.HoldDuration = 0
+			obj.MaxActivationDistance = 1000
+			obj.RequiresLineOfSight = false
 		end
 	end
 end
 workspace.DescendantAdded:Connect(function(obj)
 	if toggles.InstantInteract and obj:IsA("ProximityPrompt") then
 		obj.HoldDuration = 0
+		obj.MaxActivationDistance = 1000
+		obj.RequiresLineOfSight = false
 	end
 end)
 
@@ -399,14 +418,14 @@ createButton("Teleport to Saved Location", function()
 	end
 end)
 
--- Key tracking + INSERT toggle
+-- Key tracking + RIGHT CTRL toggle (this is the change you asked for)
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	local keyName = input.KeyCode.Name
 	if keyName == "W" or keyName == "A" or keyName == "S" or keyName == "D" or keyName == "Space" or keyName == "LeftControl" then
 		keys[keyName] = true
 	end
-	if input.KeyCode == Enum.KeyCode.Insert then
+	if input.KeyCode == Enum.KeyCode.RightControl then
 		ScreenGui.Enabled = not ScreenGui.Enabled
 	end
 end)
@@ -437,5 +456,5 @@ player.CharacterAdded:Connect(function(newChar)
 end)
 
 print("✅ XENO HUB LOADED SUCCESSFULLY!")
-print("Press INSERT to open/close the GUI")
-print("All features now turn off cleanly when toggled")
+print("Press RIGHT CTRL to open/close the GUI")
+print("Noclip now turns off cleanly • Instant Interact is stronger")
