@@ -1,266 +1,252 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
-local LocalPlayer = Players.LocalPlayer
-local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+-- States
+local toggles = {Fly = false, Noclip = false, InstantInteract = false, InstantHeal = false}
+local savedCFrame = nil
+local character, rootPart, humanoid
+local flySpeed = 80  -- Feel free to change this value
+local keys = {}
 
--- Create ScreenGui
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "StealAMagicAdminV2"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui
+local function updateCharacter()
+	character = player.Character or player.CharacterAdded:Wait()
+	rootPart = character:WaitForChild("HumanoidRootPart")
+	humanoid = character:WaitForChild("Humanoid")
+end
+updateCharacter()
+player.CharacterAdded:Connect(updateCharacter)
 
--- Main Frame
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 420, 0, 520)
-mainFrame.Position = UDim2.new(0.5, -210, 0.5, -260)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = screenGui
+-- Fly (modern, smooth, uses AssemblyLinearVelocity + PlatformStand)
+local flyConn
+local function startFly()
+	if flyConn then return end
+	humanoid.PlatformStand = true
+	flyConn = RunService.Heartbeat:Connect(function()
+		if not toggles.Fly or not rootPart then return end
+		local move = Vector3.new()
+		if keys.W then move += camera.CFrame.LookVector end
+		if keys.S then move -= camera.CFrame.LookVector end
+		if keys.A then move -= camera.CFrame.RightVector end
+		if keys.D then move += camera.CFrame.RightVector end
+		if keys.Space then move += Vector3.new(0,1,0) end
+		if keys.LeftControl then move -= Vector3.new(0,1,0) end
+		
+		if move.Magnitude > 0 then
+			rootPart.AssemblyLinearVelocity = move.Unit * flySpeed
+		else
+			rootPart.AssemblyLinearVelocity = Vector3.new(0,0,0)
+		end
+	end)
+end
+local function stopFly()
+	if flyConn then flyConn:Disconnect() flyConn = nil end
+	if humanoid then humanoid.PlatformStand = false end
+	if rootPart then rootPart.AssemblyLinearVelocity = Vector3.new(0,0,0) end
+end
 
-Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+-- Noclip
+local noclipConn
+local function startNoclip()
+	if noclipConn then return end
+	noclipConn = RunService.Stepped:Connect(function()
+		if not toggles.Noclip or not character then return end
+		for _, part in pairs(character:GetDescendants()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = false
+			end
+		end
+	end)
+end
+local function stopNoclip()
+	if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+end
 
--- Title Bar
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 50)
-titleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-titleBar.Parent = mainFrame
-
-Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -90, 1, 0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Steal a Magic Admin V2"
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextScaled = true
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.Parent = titleBar
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 35, 0, 35)
-closeBtn.Position = UDim2.new(1, -45, 0, 8)
-closeBtn.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
-closeBtn.Text = "✕"
-closeBtn.TextColor3 = Color3.new(1,1,1)
-closeBtn.TextScaled = true
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.Parent = titleBar
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
-
--- Selected Label
-local selectedLabel = Instance.new("TextLabel")
-selectedLabel.Size = UDim2.new(1, -20, 0, 35)
-selectedLabel.Position = UDim2.new(0, 10, 0, 65)
-selectedLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-selectedLabel.Text = "Selected: None"
-selectedLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
-selectedLabel.TextScaled = true
-selectedLabel.Font = Enum.Font.GothamSemibold
-selectedLabel.Parent = mainFrame
-Instance.new("UICorner", selectedLabel).CornerRadius = UDim.new(0, 8)
-
--- Player List
-local listFrame = Instance.new("Frame")
-listFrame.Size = UDim2.new(1, -20, 0, 280)
-listFrame.Position = UDim2.new(0, 10, 0, 115)
-listFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-listFrame.Parent = mainFrame
-Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0, 10)
-
-local scrolling = Instance.new("ScrollingFrame")
-scrolling.Size = UDim2.new(1, -15, 1, -15)
-scrolling.Position = UDim2.new(0, 8, 0, 8)
-scrolling.BackgroundTransparency = 1
-scrolling.ScrollBarThickness = 8
-scrolling.Parent = listFrame
-
-local uiListLayout = Instance.new("UIListLayout")
-uiListLayout.Padding = UDim.new(0, 5)
-uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-uiListLayout.Parent = scrolling
-
--- Buttons
-local buttonsFrame = Instance.new("Frame")
-buttonsFrame.Size = UDim2.new(1, -20, 0, 80)
-buttonsFrame.Position = UDim2.new(0, 10, 1, -95)
-buttonsFrame.BackgroundTransparency = 1
-buttonsFrame.Parent = mainFrame
-
-local killBtn = Instance.new("TextButton")
-killBtn.Size = UDim2.new(0.48, 0, 1, 0)
-killBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-killBtn.Text = "KILL (New Method)"
-killBtn.TextColor3 = Color3.new(1,1,1)
-killBtn.TextScaled = true
-killBtn.Font = Enum.Font.GothamBold
-killBtn.Parent = buttonsFrame
-Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 10)
-
-local kickBtn = Instance.new("TextButton")
-kickBtn.Size = UDim2.new(0.48, 0, 1, 0)
-kickBtn.Position = UDim2.new(0.52, 0, 0, 0)
-kickBtn.BackgroundColor3 = Color3.fromRGB(200, 130, 0)
-kickBtn.Text = "KICK (Crash Method)"
-kickBtn.TextColor3 = Color3.new(1,1,1)
-kickBtn.TextScaled = true
-kickBtn.Font = Enum.Font.GothamBold
-kickBtn.Parent = buttonsFrame
-Instance.new("UICorner", kickBtn).CornerRadius = UDim.new(0, 10)
-
--- Draggable
-local dragging = false
-local dragStart, startPos
-
-titleBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		dragStart = input.Position
-		startPos = mainFrame.Position
+-- Instant Interact (sets HoldDuration = 0 for all ProximityPrompts)
+local function applyInstantInteract()
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("ProximityPrompt") then
+			obj.HoldDuration = 0
+		end
+	end
+end
+workspace.DescendantAdded:Connect(function(obj)
+	if toggles.InstantInteract and obj:IsA("ProximityPrompt") then
+		obj.HoldDuration = 0
 	end
 end)
 
-titleBar.InputEnded:Connect(function(input)
+-- Instant Heal (restores full HP instantly after any damage)
+local healConn
+local function startHeal()
+	if healConn then return end
+	healConn = humanoid.HealthChanged:Connect(function(health)
+		if toggles.InstantHeal and health < humanoid.MaxHealth then
+			humanoid.Health = humanoid.MaxHealth
+		end
+	end)
+end
+local function stopHeal()
+	if healConn then healConn:Disconnect() healConn = nil end
+end
+
+-- Key tracking for fly
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	local keyName = input.KeyCode.Name
+	if keyName == "W" or keyName == "A" or keyName == "S" or keyName == "D" or keyName == "Space" or keyName == "LeftControl" then
+		keys[keyName] = true
+	end
+end)
+UserInputService.InputEnded:Connect(function(input)
+	local keyName = input.KeyCode.Name
+	if keyName == "W" or keyName == "A" or keyName == "S" or keyName == "D" or keyName == "Space" or keyName == "LeftControl" then
+		keys[keyName] = false
+	end
+end)
+
+-- === CLEAN DRAGGABLE & TOGGLEABLE UI ===
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "XenoHub"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = game:GetService("CoreGui")  -- Best for executors (Xeno compatible)
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 380, 0, 480)
+MainFrame.Position = UDim2.new(0.5, -190, 0.5, -240)
+MainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
+
+-- Title Bar (draggable)
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 50)
+TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 12)
+TitleCorner.Parent = TitleBar
+
+local Title = Instance.new("TextLabel")
+Title.Text = "XENO HUB"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 22
+Title.BackgroundTransparency = 1
+Title.Size = UDim2.new(1, -100, 1, 0)
+Title.Position = UDim2.new(0, 15, 0, 0)
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
+
+-- Close button (hides GUI instead of destroying)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 40, 0, 40)
+CloseBtn.Position = UDim2.new(1, -50, 0.5, -20)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.new(1,1,1)
+CloseBtn.TextSize = 20
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = TitleBar
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 8)
+closeCorner.Parent = CloseBtn
+CloseBtn.MouseButton1Click:Connect(function()
+	ScreenGui.Enabled = false
+end)
+
+-- Draggable logic
+local dragging, dragInput, dragStart, startPos
+TitleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = MainFrame.Position
+	end
+end)
+TitleBar.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = false
 	end
 end)
-
 UserInputService.InputChanged:Connect(function(input)
 	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 		local delta = input.Position - dragStart
-		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	end
 end)
 
-closeBtn.MouseButton1Click:Connect(function()
-	screenGui:Destroy()
+-- Scrolling content area
+local ContentFrame = Instance.new("ScrollingFrame")
+ContentFrame.Size = UDim2.new(1, -20, 1, -70)
+ContentFrame.Position = UDim2.new(0, 10, 0, 60)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.BorderSizePixel = 0
+ContentFrame.ScrollBarThickness = 6
+ContentFrame.Parent = MainFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 10)
+UIListLayout.Parent = ContentFrame
+
+ContentFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y)
+UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	ContentFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 20)
 end)
 
--- Variables
-local selectedPlayer = nil
-local killConnection = nil
-
--- Create player button
-local function createPlayerButton(plr)
+-- Toggle button creator (green ON / red OFF)
+local function createToggle(text, toggleName, onToggle)
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(1, -10, 0, 40)
-	btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-	btn.Text = "   " .. plr.Name .. "   (" .. plr.DisplayName .. ")"
-	btn.TextColor3 = Color3.new(1,1,1)
-	btn.TextXAlignment = Enum.TextXAlignment.Left
-	btn.TextScaled = true
-	btn.Font = Enum.Font.Gotham
-	btn.Parent = scrolling
-
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-
+	btn.Size = UDim2.new(1, 0, 0, 55)
+	btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- default OFF (red)
+	btn.Text = text .. ": OFF"
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.Font = Enum.Font.GothamSemibold
+	btn.TextSize = 18
+	btn.Parent = ContentFrame
+	
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = btn
+	
 	btn.MouseButton1Click:Connect(function()
-		selectedPlayer = plr
-		selectedLabel.Text = "Selected: " .. plr.Name
-	end)
-end
-
-local function updatePlayerList()
-	for _, child in ipairs(scrolling:GetChildren()) do
-		if child:IsA("TextButton") then child:Destroy() end
-	end
-
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer then
-			createPlayerButton(plr)
+		toggles[toggleName] = not toggles[toggleName]
+		local state = toggles[toggleName]
+		if state then
+			btn.BackgroundColor3 = Color3.fromRGB(0, 200, 80) -- green ON
+			btn.Text = text .. ": ON"
+		else
+			btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red OFF
+			btn.Text = text .. ": OFF"
 		end
-	end
-
-	scrolling.CanvasSize = UDim2.new(0, 0, 0, uiListLayout.AbsoluteContentSize.Y + 20)
-end
-
--- === NEW KILL METHOD ===
-local function newKillMethod(plr)
-	if not plr or not plr.Parent then return end
-
-	spawn(function()
-		while plr and plr.Parent do
-			if plr.Character then
-				-- Destroy character
-				pcall(function() plr.Character:Destroy() end)
-
-				-- Create explosion at last known position
-				if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-					local root = plr.Character.HumanoidRootPart
-					local explosion = Instance.new("Explosion")
-					explosion.Position = root.Position
-					explosion.BlastRadius = 50
-					explosion.Parent = workspace
-				end
-
-				-- Crash speed values
-				if plr.Character and plr.Character:FindFirstChild("Humanoid") then
-					local hum = plr.Character.Humanoid
-					hum.WalkSpeed = -100
-					hum.JumpPower = -100
-					hum.PlatformStand = true
-				end
-			end
-			task.wait(0.3) -- Fast loop
-		end
+		if onToggle then onToggle(state) end
 	end)
+	return btn
 end
 
--- === NEW KICK METHOD (Crash Loop) ===
-local function newKickMethod(plr)
-	if not plr or not plr.Parent then return end
-
-	-- Crash loop + destroy key objects
-	spawn(function()
-		-- Destroy important player objects
-		pcall(function() plr:Destroy() end)           -- Try direct destroy
-		pcall(function() plr.Character:Destroy() end)
-
-		-- Infinite crash loop (very hard to block)
-		while plr and plr.Parent do
-			pcall(function()
-				if plr.Character then
-					for _, v in ipairs(plr.Character:GetDescendants()) do
-						if v:IsA("BasePart") or v:IsA("MeshPart") then
-							v:Destroy()
-						end
-					end
-				end
-			end)
-			task.wait() -- Very tight loop
-		end
-	end)
-
-	print("💥 Crash-kick attempted on: " .. plr.Name .. " (lol)")
-end
-
--- Kill Button
-killBtn.MouseButton1Click:Connect(function()
-	if selectedPlayer then
-		newKillMethod(selectedPlayer)
-		print("🔴 New kill method activated on: " .. selectedPlayer.Name)
-	else
-		print("⚠️ Please select a player first!")
-	end
-end)
-
--- Kick Button
-kickBtn.MouseButton1Click:Connect(function()
-	if selectedPlayer then
-		newKickMethod(selectedPlayer)
-	else
-		print("⚠️ Please select a player first!")
-	end
-end)
-
--- Auto update list
-Players.PlayerAdded:Connect(updatePlayerList)
-Players.PlayerRemoving:Connect(updatePlayerList)
-updatePlayerList()
-
-print("✅ Steal a Magic Admin V2 Loaded with new methods!")
-print("   • KILL = Explosion + Character Destroy + Speed Crash")
-print("   • KICK = Crash loop + Instance destruction")
+-- Action button creator
+local function createButton(text, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 0, 50)
+	btn.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+	btn.Text = text
+	btn.TextColor3 = Color3.new(1,1,1)
+	btn.Font = Enum.Font.GothamSemibold
+	btn.TextSize = 17
+	btn.Parent = ContentFrame
+	
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = btn
+	
+	btn.MouseButton1Click:Connect(callback)
+	return btn
