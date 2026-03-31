@@ -1,0 +1,266 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Create ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "StealAMagicAdminV2"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- Main Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 420, 0, 520)
+mainFrame.Position = UDim2.new(0.5, -210, 0.5, -260)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+
+-- Title Bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 50)
+titleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+titleBar.Parent = mainFrame
+
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -90, 1, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Steal a Magic Admin V2"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextScaled = true
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.Parent = titleBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 35, 0, 35)
+closeBtn.Position = UDim2.new(1, -45, 0, 8)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.new(1,1,1)
+closeBtn.TextScaled = true
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Parent = titleBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+
+-- Selected Label
+local selectedLabel = Instance.new("TextLabel")
+selectedLabel.Size = UDim2.new(1, -20, 0, 35)
+selectedLabel.Position = UDim2.new(0, 10, 0, 65)
+selectedLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+selectedLabel.Text = "Selected: None"
+selectedLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+selectedLabel.TextScaled = true
+selectedLabel.Font = Enum.Font.GothamSemibold
+selectedLabel.Parent = mainFrame
+Instance.new("UICorner", selectedLabel).CornerRadius = UDim.new(0, 8)
+
+-- Player List
+local listFrame = Instance.new("Frame")
+listFrame.Size = UDim2.new(1, -20, 0, 280)
+listFrame.Position = UDim2.new(0, 10, 0, 115)
+listFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+listFrame.Parent = mainFrame
+Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0, 10)
+
+local scrolling = Instance.new("ScrollingFrame")
+scrolling.Size = UDim2.new(1, -15, 1, -15)
+scrolling.Position = UDim2.new(0, 8, 0, 8)
+scrolling.BackgroundTransparency = 1
+scrolling.ScrollBarThickness = 8
+scrolling.Parent = listFrame
+
+local uiListLayout = Instance.new("UIListLayout")
+uiListLayout.Padding = UDim.new(0, 5)
+uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+uiListLayout.Parent = scrolling
+
+-- Buttons
+local buttonsFrame = Instance.new("Frame")
+buttonsFrame.Size = UDim2.new(1, -20, 0, 80)
+buttonsFrame.Position = UDim2.new(0, 10, 1, -95)
+buttonsFrame.BackgroundTransparency = 1
+buttonsFrame.Parent = mainFrame
+
+local killBtn = Instance.new("TextButton")
+killBtn.Size = UDim2.new(0.48, 0, 1, 0)
+killBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+killBtn.Text = "KILL (New Method)"
+killBtn.TextColor3 = Color3.new(1,1,1)
+killBtn.TextScaled = true
+killBtn.Font = Enum.Font.GothamBold
+killBtn.Parent = buttonsFrame
+Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 10)
+
+local kickBtn = Instance.new("TextButton")
+kickBtn.Size = UDim2.new(0.48, 0, 1, 0)
+kickBtn.Position = UDim2.new(0.52, 0, 0, 0)
+kickBtn.BackgroundColor3 = Color3.fromRGB(200, 130, 0)
+kickBtn.Text = "KICK (Crash Method)"
+kickBtn.TextColor3 = Color3.new(1,1,1)
+kickBtn.TextScaled = true
+kickBtn.Font = Enum.Font.GothamBold
+kickBtn.Parent = buttonsFrame
+Instance.new("UICorner", kickBtn).CornerRadius = UDim.new(0, 10)
+
+-- Draggable
+local dragging = false
+local dragStart, startPos
+
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = mainFrame.Position
+	end
+end)
+
+titleBar.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+	screenGui:Destroy()
+end)
+
+-- Variables
+local selectedPlayer = nil
+local killConnection = nil
+
+-- Create player button
+local function createPlayerButton(plr)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -10, 0, 40)
+	btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	btn.Text = "   " .. plr.Name .. "   (" .. plr.DisplayName .. ")"
+	btn.TextColor3 = Color3.new(1,1,1)
+	btn.TextXAlignment = Enum.TextXAlignment.Left
+	btn.TextScaled = true
+	btn.Font = Enum.Font.Gotham
+	btn.Parent = scrolling
+
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+	btn.MouseButton1Click:Connect(function()
+		selectedPlayer = plr
+		selectedLabel.Text = "Selected: " .. plr.Name
+	end)
+end
+
+local function updatePlayerList()
+	for _, child in ipairs(scrolling:GetChildren()) do
+		if child:IsA("TextButton") then child:Destroy() end
+	end
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			createPlayerButton(plr)
+		end
+	end
+
+	scrolling.CanvasSize = UDim2.new(0, 0, 0, uiListLayout.AbsoluteContentSize.Y + 20)
+end
+
+-- === NEW KILL METHOD ===
+local function newKillMethod(plr)
+	if not plr or not plr.Parent then return end
+
+	spawn(function()
+		while plr and plr.Parent do
+			if plr.Character then
+				-- Destroy character
+				pcall(function() plr.Character:Destroy() end)
+
+				-- Create explosion at last known position
+				if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+					local root = plr.Character.HumanoidRootPart
+					local explosion = Instance.new("Explosion")
+					explosion.Position = root.Position
+					explosion.BlastRadius = 50
+					explosion.Parent = workspace
+				end
+
+				-- Crash speed values
+				if plr.Character and plr.Character:FindFirstChild("Humanoid") then
+					local hum = plr.Character.Humanoid
+					hum.WalkSpeed = -100
+					hum.JumpPower = -100
+					hum.PlatformStand = true
+				end
+			end
+			task.wait(0.3) -- Fast loop
+		end
+	end)
+end
+
+-- === NEW KICK METHOD (Crash Loop) ===
+local function newKickMethod(plr)
+	if not plr or not plr.Parent then return end
+
+	-- Crash loop + destroy key objects
+	spawn(function()
+		-- Destroy important player objects
+		pcall(function() plr:Destroy() end)           -- Try direct destroy
+		pcall(function() plr.Character:Destroy() end)
+
+		-- Infinite crash loop (very hard to block)
+		while plr and plr.Parent do
+			pcall(function()
+				if plr.Character then
+					for _, v in ipairs(plr.Character:GetDescendants()) do
+						if v:IsA("BasePart") or v:IsA("MeshPart") then
+							v:Destroy()
+						end
+					end
+				end
+			end)
+			task.wait() -- Very tight loop
+		end
+	end)
+
+	print("💥 Crash-kick attempted on: " .. plr.Name .. " (lol)")
+end
+
+-- Kill Button
+killBtn.MouseButton1Click:Connect(function()
+	if selectedPlayer then
+		newKillMethod(selectedPlayer)
+		print("🔴 New kill method activated on: " .. selectedPlayer.Name)
+	else
+		print("⚠️ Please select a player first!")
+	end
+end)
+
+-- Kick Button
+kickBtn.MouseButton1Click:Connect(function()
+	if selectedPlayer then
+		newKickMethod(selectedPlayer)
+	else
+		print("⚠️ Please select a player first!")
+	end
+end)
+
+-- Auto update list
+Players.PlayerAdded:Connect(updatePlayerList)
+Players.PlayerRemoving:Connect(updatePlayerList)
+updatePlayerList()
+
+print("✅ Steal a Magic Admin V2 Loaded with new methods!")
+print("   • KILL = Explosion + Character Destroy + Speed Crash")
+print("   • KICK = Crash loop + Instance destruction")
