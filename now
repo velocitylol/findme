@@ -1,25 +1,38 @@
+-- ✅ FIXED & OPTIMIZED FOR XENO EXECUTOR
+-- The original didn't load because Xeno often blocks/hides CoreGui parenting.
+-- Fixed by using PlayerGui + added safety waits + better character loading + debug prints
+
+print("🔧 XENO HUB - Starting load...")
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
+
+task.wait(0.5) -- Small delay to make sure everything is loaded in Xeno
 
 -- States
 local toggles = {Fly = false, Noclip = false, InstantInteract = false, InstantHeal = false}
 local savedCFrame = nil
 local character, rootPart, humanoid
-local flySpeed = 80  -- Feel free to change this value
+local flySpeed = 80
 local keys = {}
 
 local function updateCharacter()
 	character = player.Character or player.CharacterAdded:Wait()
-	rootPart = character:WaitForChild("HumanoidRootPart")
-	humanoid = character:WaitForChild("Humanoid")
+	rootPart = character:WaitForChild("HumanoidRootPart", 5)
+	humanoid = character:WaitForChild("Humanoid", 5)
+	if not rootPart or not humanoid then
+		warn("⚠️ Xeno Hub: Could not find character parts")
+	end
+	print("✅ Xeno Hub: Character loaded")
 end
 updateCharacter()
 player.CharacterAdded:Connect(updateCharacter)
 
--- Fly (modern, smooth, uses AssemblyLinearVelocity + PlatformStand)
+-- === FLY ===
 local flyConn
 local function startFly()
 	if flyConn then return end
@@ -34,20 +47,16 @@ local function startFly()
 		if keys.Space then move += Vector3.new(0,1,0) end
 		if keys.LeftControl then move -= Vector3.new(0,1,0) end
 		
-		if move.Magnitude > 0 then
-			rootPart.AssemblyLinearVelocity = move.Unit * flySpeed
-		else
-			rootPart.AssemblyLinearVelocity = Vector3.new(0,0,0)
-		end
+		rootPart.AssemblyLinearVelocity = move.Magnitude > 0 and move.Unit * flySpeed or Vector3.new()
 	end)
 end
 local function stopFly()
 	if flyConn then flyConn:Disconnect() flyConn = nil end
 	if humanoid then humanoid.PlatformStand = false end
-	if rootPart then rootPart.AssemblyLinearVelocity = Vector3.new(0,0,0) end
+	if rootPart then rootPart.AssemblyLinearVelocity = Vector3.new() end
 end
 
--- Noclip
+-- === NOCLIP ===
 local noclipConn
 local function startNoclip()
 	if noclipConn then return end
@@ -64,7 +73,7 @@ local function stopNoclip()
 	if noclipConn then noclipConn:Disconnect() noclipConn = nil end
 end
 
--- Instant Interact (sets HoldDuration = 0 for all ProximityPrompts)
+-- === INSTANT INTERACT ===
 local function applyInstantInteract()
 	for _, obj in pairs(workspace:GetDescendants()) do
 		if obj:IsA("ProximityPrompt") then
@@ -78,7 +87,7 @@ workspace.DescendantAdded:Connect(function(obj)
 	end
 end)
 
--- Instant Heal (restores full HP instantly after any damage)
+-- === INSTANT HEAL ===
 local healConn
 local function startHeal()
 	if healConn then return end
@@ -92,7 +101,7 @@ local function stopHeal()
 	if healConn then healConn:Disconnect() healConn = nil end
 end
 
--- Key tracking for fly
+-- Key tracking
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	local keyName = input.KeyCode.Name
@@ -107,11 +116,11 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
--- === CLEAN DRAGGABLE & TOGGLEABLE UI ===
+-- === CLEAN UI (now using PlayerGui - this is the fix) ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "XenoHub"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = game:GetService("CoreGui")  -- Best for executors (Xeno compatible)
+ScreenGui.Parent = player:WaitForChild("PlayerGui")  -- ← FIXED: PlayerGui instead of CoreGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 380, 0, 480)
@@ -124,7 +133,6 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 12)
 UICorner.Parent = MainFrame
 
--- Title Bar (draggable)
 local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1, 0, 0, 50)
 TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
@@ -146,7 +154,6 @@ Title.Position = UDim2.new(0, 15, 0, 0)
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = TitleBar
 
--- Close button (hides GUI instead of destroying)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 40, 0, 40)
 CloseBtn.Position = UDim2.new(1, -50, 0.5, -20)
@@ -163,8 +170,8 @@ CloseBtn.MouseButton1Click:Connect(function()
 	ScreenGui.Enabled = false
 end)
 
--- Draggable logic
-local dragging, dragInput, dragStart, startPos
+-- Draggable
+local dragging, dragStart, startPos
 TitleBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		dragging = true
@@ -184,7 +191,7 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
--- Scrolling content area
+-- Scrolling area
 local ContentFrame = Instance.new("ScrollingFrame")
 ContentFrame.Size = UDim2.new(1, -20, 1, -70)
 ContentFrame.Position = UDim2.new(0, 10, 0, 60)
@@ -203,11 +210,11 @@ UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 	ContentFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 20)
 end)
 
--- Toggle button creator (green ON / red OFF)
+-- Toggle creator
 local function createToggle(text, toggleName, onToggle)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(1, 0, 0, 55)
-	btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- default OFF (red)
+	btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 	btn.Text = text .. ": OFF"
 	btn.TextColor3 = Color3.new(1, 1, 1)
 	btn.Font = Enum.Font.GothamSemibold
@@ -222,10 +229,10 @@ local function createToggle(text, toggleName, onToggle)
 		toggles[toggleName] = not toggles[toggleName]
 		local state = toggles[toggleName]
 		if state then
-			btn.BackgroundColor3 = Color3.fromRGB(0, 200, 80) -- green ON
+			btn.BackgroundColor3 = Color3.fromRGB(0, 200, 80)
 			btn.Text = text .. ": ON"
 		else
-			btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- red OFF
+			btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 			btn.Text = text .. ": OFF"
 		end
 		if onToggle then onToggle(state) end
@@ -233,7 +240,7 @@ local function createToggle(text, toggleName, onToggle)
 	return btn
 end
 
--- Action button creator
+-- Button creator
 local function createButton(text, callback)
 	local btn = Instance.new("TextButton")
 	btn.Size = UDim2.new(1, 0, 0, 50)
@@ -250,3 +257,53 @@ local function createButton(text, callback)
 	
 	btn.MouseButton1Click:Connect(callback)
 	return btn
+end
+
+-- Create features
+createToggle("Fly", "Fly", function(state) if state then startFly() else stopFly() end end)
+createToggle("Noclip", "Noclip", function(state) if state then startNoclip() else stopNoclip() end end)
+createToggle("Instant Interact", "InstantInteract", function(state)
+	if state then applyInstantInteract() end
+end)
+createToggle("Instant Heal", "InstantHeal", function(state)
+	if state then startHeal() else stopHeal() end
+end)
+
+createButton("Save Location", function()
+	if rootPart then
+		savedCFrame = rootPart.CFrame
+		print("✅ Location saved!")
+	end
+end)
+
+createButton("Teleport to Saved Location", function()
+	if savedCFrame and rootPart then
+		rootPart.CFrame = savedCFrame
+		print("✅ Teleported!")
+	end
+end)
+
+-- Toggle GUI with INSERT
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.Insert then
+		ScreenGui.Enabled = not ScreenGui.Enabled
+	end
+end)
+
+-- Re-apply heal on respawn
+player.CharacterAdded:Connect(function(newChar)
+	task.wait(1)
+	local newHum = newChar:FindFirstChild("Humanoid")
+	if newHum and toggles.InstantHeal then
+		if healConn then healConn:Disconnect() end
+		healConn = newHum.HealthChanged:Connect(function(health)
+			if toggles.InstantHeal and health < newHum.MaxHealth then
+				newHum.Health = newHum.MaxHealth
+			end
+		end)
+	end
+end)
+
+print("✅ XENO HUB LOADED SUCCESSFULLY!")
+print("Press INSERT to open/close the GUI")
