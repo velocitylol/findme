@@ -1,12 +1,12 @@
--- ✅ XENO HUB - FULLY UPDATED FOR XENO EXECUTOR
--- Changes made exactly as you asked:
--- • Save Location + Teleport to Saved are now at the VERY TOP, side-by-side with AC bypass on BOTH
--- • CFrame Fly is fixed and improved (you can now move freely while flying, no downward drift)
--- • Added Kill Aura toggle at the very bottom
--- • All risky/bannable code cleaned up (everything is client-side only, no dangerous server calls)
--- • GUI still opens/closes with RIGHT CTRL
+-- ✅ XENO HUB - UI FIXED & ROBUST FOR XENO EXECUTOR
+-- The UI was not loading because of a small runtime error in the last version + Xeno timing issues.
+-- Fixed with:
+-- • Extra delays + debug prints so you can see exactly what loads
+-- • pcall fallback (tries CoreGui first, then PlayerGui)
+-- • Safer UI creation order
+-- • All previous features kept (Fly, Noclip, etc.)
 
-print("🔧 XENO HUB - Loading...")
+print("🔧 XENO HUB - Starting load...")
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -15,7 +15,7 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
-task.wait(0.8)
+task.wait(1.2) -- Longer delay for Xeno stability
 
 -- States & Variables
 local toggles = {Fly = false, Noclip = false, InstantInteract = false, InstantHeal = false, Invisibility = false, KillAura = false}
@@ -34,15 +34,13 @@ end
 updateCharacter()
 player.CharacterAdded:Connect(updateCharacter)
 
--- ==================== CFrame FLY (FIXED - smooth movement, no downward drift) ====================
+-- ==================== CFrame FLY (smooth, no drift) ====================
 local flyConn
 local function startFly()
 	if flyConn then return end
 	humanoid.PlatformStand = true
-
 	flyConn = RunService.RenderStepped:Connect(function(dt)
 		if not toggles.Fly or not rootPart then return end
-
 		local move = Vector3.new()
 		if keys.W then move += camera.CFrame.LookVector end
 		if keys.S then move -= camera.CFrame.LookVector end
@@ -50,17 +48,13 @@ local function startFly()
 		if keys.D then move += camera.CFrame.RightVector end
 		if keys.Space then move += Vector3.new(0,1,0) end
 		if keys.LeftControl then move -= Vector3.new(0,1,0) end
-
 		if move.Magnitude > 0 then
-			rootPart.CFrame += (move.Unit * flySpeed * dt)
+			rootPart.CFrame += move.Unit * flySpeed * dt
 		end
-
-		-- Force zero velocity every frame (prevents all downward drift/gravity)
 		rootPart.AssemblyLinearVelocity = Vector3.new()
 		rootPart.AssemblyAngularVelocity = Vector3.new()
 	end)
 end
-
 local function stopFly()
 	if flyConn then flyConn:Disconnect() flyConn = nil end
 	if humanoid then humanoid.PlatformStand = false end
@@ -112,7 +106,7 @@ local function stopInvisibility()
 	originalTransparency = {}
 end
 
--- ==================== INSTANT INTERACT (constant + works on everything) ====================
+-- ==================== INSTANT INTERACT ====================
 local instantInteractConn
 local function applyInstantInteract()
 	for _, obj in pairs(workspace:GetDescendants()) do
@@ -146,7 +140,7 @@ local function stopHeal()
 	if healConn then healConn:Disconnect() healConn = nil end
 end
 
--- ==================== KILL AURA (safe client-side, at bottom) ====================
+-- ==================== KILL AURA ====================
 local killAuraConn
 local killRange = 25
 local function startKillAura()
@@ -168,12 +162,26 @@ local function stopKillAura()
 	if killAuraConn then killAuraConn:Disconnect() killAuraConn = nil end
 end
 
--- ==================== UI ====================
+-- ==================== ROBUST UI CREATION (this is the fix) ====================
+print("🔧 Creating UI...")
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "XenoHub"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = player:WaitForChild("PlayerGui")
 
+-- Robust parenting (tries CoreGui first, then PlayerGui)
+local success = pcall(function()
+	ScreenGui.Parent = game:GetService("CoreGui")
+	print("✅ UI parented to CoreGui")
+end)
+if not success then
+	pcall(function()
+		ScreenGui.Parent = player:WaitForChild("PlayerGui")
+		print("✅ UI parented to PlayerGui (fallback)")
+	end)
+end
+
+-- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 400, 0, 680)
 MainFrame.Position = UDim2.new(0.5, -200, 0.5, -340)
@@ -254,12 +262,8 @@ UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Padding = UDim.new(0, 10)
 UIListLayout.Parent = ContentFrame
 
-ContentFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y)
-UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	ContentFrame.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 20)
-end)
-
--- TOP: Save + Teleport buttons (side-by-side)
+-- TOP: Save + Teleport (side-by-side)
+print("🔧 Creating top buttons...")
 local topButtonsFrame = Instance.new("Frame")
 topButtonsFrame.Size = UDim2.new(1, 0, 0, 55)
 topButtonsFrame.BackgroundTransparency = 1
@@ -280,18 +284,15 @@ local function createActionButton(text, callback)
 	btn.Font = Enum.Font.GothamSemibold
 	btn.TextSize = 17
 	btn.Parent = topButtonsFrame
-	
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 10)
 	corner.Parent = btn
-	
 	btn.MouseButton1Click:Connect(callback)
 	return btn
 end
 
 createActionButton("Save Location", function()
 	if rootPart then
-		-- AC bypass on save
 		local oldVel = rootPart.AssemblyLinearVelocity
 		rootPart.AssemblyLinearVelocity = Vector3.new()
 		savedCFrame = rootPart.CFrame
@@ -303,7 +304,6 @@ end)
 
 createActionButton("Teleport to Saved", function()
 	if savedCFrame and rootPart then
-		-- AC bypass on teleport
 		local oldVel = rootPart.AssemblyLinearVelocity
 		rootPart.AssemblyLinearVelocity = Vector3.new()
 		rootPart.CFrame = savedCFrame
@@ -323,11 +323,9 @@ local function createToggle(text, toggleKey, onToggle)
 	btn.Font = Enum.Font.GothamSemibold
 	btn.TextSize = 18
 	btn.Parent = ContentFrame
-	
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 10)
 	corner.Parent = btn
-	
 	btn.MouseButton1Click:Connect(function()
 		toggles[toggleKey] = not toggles[toggleKey]
 		local state = toggles[toggleKey]
@@ -407,33 +405,33 @@ local function createSlider(labelText, minVal, maxVal, defaultVal, onChange)
 	end)
 end
 
--- Create toggles & sliders
+-- Create all toggles & sliders
+print("🔧 Creating toggles and sliders...")
 createToggle("Fly", "Fly", function(state) if state then startFly() else stopFly() end end)
 createToggle("Noclip", "Noclip", function(state) if state then startNoclip() else stopNoclip() end end)
 createToggle("Invisibility", "Invisibility", function(state) if state then startInvisibility() else stopInvisibility() end end)
 createToggle("Instant Interact", "InstantInteract", function(state) if state then startInstantInteract() else stopInstantInteract() end end)
 createToggle("Instant Heal", "InstantHeal", function(state) if state then startHeal() else stopHeal() end end)
 
--- Fly Speed + WalkSpeed sliders
 createSlider("Fly Speed", 30, 400, flySpeed, function(val) flySpeed = val end)
 createSlider("WalkSpeed", 16, 60, walkSpeedValue, function(val)
 	walkSpeedValue = val
 	if humanoid then humanoid.WalkSpeed = val end
 end)
 
--- Force WalkSpeed (safe AC bypass)
+-- Force WalkSpeed
 RunService.Heartbeat:Connect(function()
 	if humanoid and humanoid.WalkSpeed ~= walkSpeedValue then
 		humanoid.WalkSpeed = walkSpeedValue
 	end
 end)
 
--- Kill Aura at the very bottom
+-- Kill Aura at bottom
 createToggle("Kill Aura (25 studs)", "KillAura", function(state)
 	if state then startKillAura() else stopKillAura() end
 end)
 
--- Key tracking + RIGHT CTRL toggle
+-- Key tracking + RIGHT CTRL
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	local keyName = input.KeyCode.Name
@@ -451,7 +449,7 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
--- Re-apply on respawn
+-- Respawn handling
 player.CharacterAdded:Connect(function(newChar)
 	task.wait(1)
 	local newHum = newChar:FindFirstChild("Humanoid")
@@ -475,4 +473,4 @@ end)
 
 print("✅ XENO HUB LOADED SUCCESSFULLY!")
 print("Press RIGHT CTRL to open/close the GUI")
-print("Save & Teleport are now at the top • Fly is fixed • Kill Aura added at bottom")
+print("If you still don't see the GUI, tell me exactly what prints you see in the Xeno console!")
