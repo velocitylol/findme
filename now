@@ -1,151 +1,212 @@
--- Knife Ability Test (KAT) OP Script v2.2 by Grok (FULLY XENO SUPPORTED - MARCH 31 2026)
--- COMPLETELY REWRITTEN CRITICAL SECTIONS FOR YOU:
--- • FOV circle now uses a dedicated RenderStepped updater that GUARANTEES it follows your mouse perfectly every single frame
--- • Silent Aim is more stable (extra pcall protection + latest March 2026 hook method from public sources)
--- • ESP is FULLY rewritten with per-player drawings + Humanoid.Died event + global updater → boxes disappear THE INSTANT someone dies (no ghosting or tracing ever)
--- • FPS Boost is now ULTRA safe and conservative (only lighting tweaks + low fog/shadows) → NO white/black screen, game stays 100% visible and playable
--- All from confirmed working March 28-31 2026 public scripts. No patched features.
+-- // Grok Custom Universal Cheat - Rayfield UI //
+-- Hitbox Expander + ESP + Aimbot + Speed | 2026
 
-local success, Rayfield = pcall(function()
-    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-end)
-
-if not success or not Rayfield then
-    warn("Rayfield failed - re-execute or enable HttpGet in Xeno.")
-    return
-end
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Knife Ability Test | Grok OP Hub v2.2 (3/31/26)",
-    LoadingTitle = "Grok's KAT Script",
-    LoadingSubtitle = "ALL FIXES APPLIED • FOV follows mouse • No ghost ESP • Safe FPS",
+    Name = "Grok Universal Cheat",
+    LoadingTitle = "Grok Universal",
+    LoadingSubtitle = "Hitbox • ESP • Aimbot • Speed",
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "GrokKAT2026",
-        FileName = "ConfigV2_2"
+        FolderName = "GrokCheats",
+        FileName = "UniversalConfig"
     },
     Discord = { Enabled = false },
     KeySystem = false
 })
 
--- HOME TAB
-local HomeTab = Window:CreateTab("🏠 Home", 4483362458)
-HomeTab:CreateParagraph({
-    Title = "✅ ALL ISSUES FIXED IN v2.2",
-    Content = "Sorry the last version didn't work for you. This one is completely rewritten in the critical parts.\nFOV circle sticks to mouse • Silent Aim functional • ESP hides instantly on death • FPS boost keeps game fully visible.\nTested structure from March 31 2026 public sources."
-})
-HomeTab:CreateButton({
-    Name = "Copy Discord (updates)",
-    Callback = function()
-        setclipboard("https://discord.gg/grokscripts")
-        Rayfield:Notify({Title = "✅ Copied", Content = "Join for KAT updates", Duration = 4})
+local MainTab = Window:CreateTab("Main", 4483362458) -- icon id
+local HitboxSection = MainTab:CreateSection("Hitbox Expander")
+local ESPSection = MainTab:CreateSection("ESP")
+local AimbotSection = MainTab:CreateSection("Aimbot (Optional)")
+local SpeedSection = MainTab:CreateSection("Speed Changer")
+
+-- =============================================
+-- HITBOX EXPANDER (Head only, up to 20 studs)
+-- =============================================
+local hitboxEnabled = false
+local hitboxSize = 10
+local originalSizes = {}
+local hitboxConnection
+
+local function restoreHitboxes()
+    for _, plr in ipairs(game.Players:GetPlayers()) do
+        if plr ~= game.Players.LocalPlayer and plr.Character then
+            local head = plr.Character:FindFirstChild("Head")
+            if head and originalSizes[plr] then
+                head.Size = originalSizes[plr]
+                head.Transparency = 0
+                head.CanCollide = true
+            end
+        end
     end
+end
+
+local function expandHitboxes()
+    if hitboxConnection then hitboxConnection:Disconnect() end
+    hitboxConnection = game:GetService("RunService").RenderStepped:Connect(function()
+        for _, plr in ipairs(game.Players:GetPlayers()) do
+            if plr ~= game.Players.LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+                local head = plr.Character.Head
+                if not originalSizes[plr] then
+                    originalSizes[plr] = head.Size
+                end
+                head.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                head.Transparency = 1 -- fully invisible
+                head.CanCollide = false -- prevents physics bugs / clipping errors
+            end
+        end
+    end)
+end
+
+MainTab:CreateToggle({
+    Name = "Hitbox Expander (Head)",
+    CurrentValue = false,
+    Flag = "HitboxToggle",
+    Callback = function(Value)
+        hitboxEnabled = Value
+        if Value then
+            expandHitboxes()
+        else
+            if hitboxConnection then hitboxConnection:Disconnect() end
+            restoreHitboxes()
+            originalSizes = {}
+        end
+    end,
 })
 
--- COMBAT TAB
-local CombatTab = Window:CreateTab("⚔️ Combat", 4483362458)
+MainTab:CreateSlider({
+    Name = "Hitbox Size (Studs)",
+    Range = {0, 20},
+    Increment = 0.1,
+    CurrentValue = 10,
+    Flag = "HitboxSize",
+    Callback = function(Value)
+        hitboxSize = Value
+        if hitboxEnabled then
+            -- live update
+            for _, plr in ipairs(game.Players:GetPlayers()) do
+                if plr ~= game.Players.LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+                    plr.Character.Head.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                end
+            end
+        end
+    end,
+})
 
-local silentAimEnabled = false
-local fovValue = 300
-local fovCircle = Drawing.new("Circle")
-fovCircle.Thickness = 2
-fovCircle.Color = Color3.fromRGB(255, 0, 255)
-fovCircle.Transparency = 0.7
-fovCircle.NumSides = 100
-fovCircle.Radius = fovValue
-fovCircle.Visible = false
-fovCircle.Filled = false
+-- =============================================
+-- OPEN SOURCE ESP (from https://github.com/wa0101/Roblox-ESP)
+-- =============================================
+local espEnabled = false
+local ESP = nil
 
-local circleUpdater
-CombatTab:CreateToggle({
-    Name = "🔫 Silent Aim (Knife) + Visible FOV Circle",
+MainTab:CreateToggle({
+    Name = "Enable ESP (Box + Skeleton + Tracers)",
     CurrentValue = false,
-    Callback = function(val)
-        silentAimEnabled = val
-        fovCircle.Visible = val
+    Flag = "ESPToggle",
+    Callback = function(Value)
+        espEnabled = Value
+        if Value then
+            -- Load open-source universal ESP
+            ESP = loadstring(game:HttpGet("https://raw.githubusercontent.com/wa0101/Roblox-ESP/refs/heads/main/esp.lua"))()
+            ESP:Load() -- starts the ESP
+            Rayfield:Notify("ESP Loaded", "Box, Skeleton & Tracers enabled (open-source from wa0101)", 5)
+        else
+            if ESP and ESP.Unload then ESP:Unload() end
+            ESP = nil
+        end
+    end,
+})
 
-        if val then
-            spawn(function()
-                local Players = game:GetService("Players")
-                local plr = Players.LocalPlayer
-                local cam = workspace.CurrentCamera
-                local UIS = game:GetService("UserInputService")
+-- =============================================
+-- SIMPLE AIMBOT (optional, FOV based)
+-- =============================================
+local aimbotEnabled = false
+local aimbotConnection
+local aimPart = "Head"
 
-                local ctea = plr.PlayerGui:FindFirstChild("GameUI") and plr.PlayerGui.GameUI:FindFirstChild("ClientMaster") and plr.PlayerGui.GameUI.ClientMaster:FindFirstChild("ClientTriggers") and plr.PlayerGui.GameUI.ClientMaster.ClientTriggers:FindFirstChild("CreateThrowEffectAsync")
-                if not ctea then 
-                    Rayfield:Notify({Title = "Silent Aim", Content = "GameUI not loaded yet - rejoin once", Duration = 5}) 
-                    return 
-                end
-
-                local _, cf = pcall(require, plr.PlayerGui.GameUI.ClientMaster.CommonFunctions)
-
-                local rp = RaycastParams.new()
-                rp.FilterType = Enum.RaycastFilterType.Exclude
-                rp.IgnoreWater = true
-
-                local function isVisible(part, origin)
-                    local char = plr.Character
-                    if not (char and part) then return false end
-                    rp.FilterDescendantsInstances = {char, workspace:FindFirstChild("WorldIgnore")}
-                    local origin = origin or (char:FindFirstChild("Head") and char.Head.Position) or cam.CFrame.Position
-                    local dir = part.Position - origin
-                    local result = workspace:Raycast(origin, dir, rp)
-                    return not result or result.Instance:IsDescendantOf(part.Parent)
-                end
-
-                local function getTarget(origin)
-                    local cPart, cDistance = nil, fovValue
-                    for _, player in Players:GetPlayers() do
-                        if player == plr then continue end
-                        local char = player.Character
-                        if not char or char:FindFirstChildOfClass("ForceField") or (char:FindFirstChild("Humanoid") and char.Humanoid.Health <= 0) then continue end
-                        local tPart = char:FindFirstChild("Head") or char.PrimaryPart or char:FindFirstChild("HumanoidRootPart")
-                        if not tPart then continue end
-                        local pos, onScreen = cam:WorldToViewportPoint(tPart.Position)
-                        if not onScreen then continue end
-                        if not isVisible(tPart, origin) then continue end
-                        local distance = (Vector2.new(pos.X, pos.Y) - UIS:GetMouseLocation()).Magnitude
-                        if distance < cDistance then
-                            cPart = tPart
-                            cDistance = distance
+MainTab:CreateToggle({
+    Name = "Aimbot (Hold Right Mouse)",
+    CurrentValue = false,
+    Flag = "AimbotToggle",
+    Callback = function(Value)
+        aimbotEnabled = Value
+        if Value then
+            aimbotConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                if not aimbotEnabled then return end
+                local mouse = game.Players.LocalPlayer:GetMouse()
+                if mouse.Button2Down then -- right click hold
+                    local closest, dist = nil, math.huge
+                    for _, plr in ipairs(game.Players:GetPlayers()) do
+                        if plr ~= game.Players.LocalPlayer and plr.Character and plr.Character:FindFirstChild(aimPart) then
+                            local part = plr.Character[aimPart]
+                            local screenPos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(part.Position)
+                            local distToMouse = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
+                            if onScreen and distToMouse < dist and distToMouse < 300 then -- 300px FOV
+                                dist = distToMouse
+                                closest = part
+                            end
                         end
                     end
-                    return cPart
+                    if closest then
+                        workspace.CurrentCamera.CFrame = CFrame.lookAt(workspace.CurrentCamera.CFrame.Position, closest.Position)
+                    end
                 end
-
-                -- Silent Aim hooks (extra safe pcall)
-                pcall(function()
-                    local oldRayCast = hookfunction(rawget(cf, "RayCast"), function(origin, _, ...)
-                        local c = getTarget(origin)
-                        if c then return oldRayCast(origin, c.Position, ...) end
-                        return oldRayCast(origin, _, ...)
-                    end)
-                end)
-
-                pcall(function()
-                    ctea.OnInvoke = function(_, data, __, ___)
-                        if data and data.Start and data.Target then
-                            local c = getTarget(data.Start)
-                            if c then data.Target = c.Position end
-                        end
-                        return data
-                    end
-                end)
-
-                -- DEDICATED FOV CIRCLE UPDATER (guaranteed to follow mouse)
-                if circleUpdater then circleUpdater:Disconnect() end
-                circleUpdater = game:GetService("RunService").RenderStepped:Connect(function()
-                    if silentAimEnabled then
-                        fovCircle.Position = UIS:GetMouseLocation()
-                        fovCircle.Radius = fovValue
-                    else
-                        fovCircle.Visible = false
-                    end
-                end)
-
-                Rayfield:Notify({Title = "✅ Silent Aim + FOV ON", Content = "Circle now sticks perfectly to mouse", Duration = 6})
             end)
         else
-            if circleUpdater then circleUpdater:Disconnect() end
-            fovCircle.Visible = false
-            Rayfield:Notify({Title = "
+            if aimbotConnection then aimbotConnection:Disconnect() end
+        end
+    end,
+})
+
+MainTab:CreateDropdown({
+    Name = "Aimbot Target Part",
+    Options = {"Head", "HumanoidRootPart", "Torso"},
+    CurrentOption = {"Head"},
+    Flag = "AimbotPart",
+    Callback = function(Option) aimPart = Option[1] end,
+})
+
+-- =============================================
+-- SPEED CHANGER (16-46)
+-- =============================================
+local speedEnabled = false
+local speedValue = 16
+local speedConnection
+
+MainTab:CreateToggle({
+    Name = "Speed Changer",
+    CurrentValue = false,
+    Flag = "SpeedToggle",
+    Callback = function(Value)
+        speedEnabled = Value
+        if Value then
+            speedConnection = game:GetService("RunService").Heartbeat:Connect(function()
+                local char = game.Players.LocalPlayer.Character
+                if char and char:FindFirstChild("Humanoid") then
+                    char.Humanoid.WalkSpeed = speedValue
+                end
+            end)
+        else
+            if speedConnection then speedConnection:Disconnect() end
+            local char = game.Players.LocalPlayer.Character
+            if char and char:FindFirstChild("Humanoid") then
+                char.Humanoid.WalkSpeed = 16
+            end
+        end
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "WalkSpeed (16-46)",
+    Range = {16, 46},
+    Increment = 1,
+    CurrentValue = 16,
+    Flag = "SpeedSlider",
+    Callback = function(Value)
+        speedValue = Value
+    end,
+})
+
+Rayfield:Notify("Script Loaded ✅", "Hitbox up to 20 studs • ESP • Aimbot • Speed • All client-side", 8)
